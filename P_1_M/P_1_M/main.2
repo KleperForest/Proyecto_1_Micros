@@ -1,0 +1,337 @@
+//*********************************************************************
+// Universidad del Valle de Guatemala
+// IE2023: Programación de Microcontroladores
+// Autor: Alan Gomez
+// Proyecto: P_1_M.asm
+// Descripción: Proyecto 1 de Programación de Microcontroladores. 
+//				Versión 11.0.6 
+// Hardware: ATmega328p
+// Created: 3/06/2024 1:50:47 AM
+//********************************************************************* 
+
+//--------------------------------------------------------------------
+// Configuración
+//--------------------------------------------------------------------
+
+.include "M328PDEF.inc"
+ // R0-R15 Cargar y ciertas operaciones
+ // R16-R29 Todo terreno
+.def MU = R15; Minutos Unidad
+.def MD = R14; Minutos Decena
+.def HU = R13; Hora Unidad
+.def HD = R12; Hora Decena
+.def T6 = R11; Hora Unidad
+.def T5 = R10; Hora Decena
+.def T1 = R9; Transistor 1	
+.def T2 = R8; Transistor 2
+.def T3 = R7; Transistor 3
+.def T4 = R6; Transistor 4
+.def V4 = R5; Over 24h
+
+
+
+.def T_master = R24; Cargador de Transistor
+.def HM_master = R23; Cargador de Numero en Display
+.def ESTADO = R22; Estado de operación 
+
+.cseg; Comensamos con el segmento de Codigo. 
+.ORG 0X00
+	JMP SETUP
+.ORG 0X0020
+	JMP ISR_TIMER0_OVF
+
+//*********************************************************************
+// Stack Pointer
+//*********************************************************************
+LDI R16, LOW(RAMEND)// Ultima direccion de la memorio RAM 16bits
+OUT SPL, R16 // Se colocara en el registro SPL
+LDI R17, HIGH(RAMEND)// Seleccionamos la parte alta 
+OUT SPH, R17 //Se colocara en el registro SPH
+//*********************************************************************
+//TABLA PARA DISPLAY 
+//*********************************************************************
+TABLA7U: .DB 0x7D,0x48,0x3E,0x6E,0x4B,0x67,0x77,0x4C,0x7F,0x4F
+TABLA7D: .DB 0x7D,0x48,0x3E,0x6E,0x4B,0x67,0x7D
+TABLA7Uh: .DB 0x7D,0x48,0x3E,0x6E,0x4B,0x67,0x77,0x4C,0x7F,0x4F
+TABLA7Dh: .DB 0x7D,0x48,0x3E
+//*********************************************************************
+
+//*********************************************************************
+//BODY
+//*********************************************************************
+
+SETUP:
+	//Botones 
+	SBI PORTC, PC1; Habilitando PULL-UP en PC1
+	CBI DDRC, PC1; Habilitando PC1 como entrada
+	SBI PORTC, PC2; Habilitando PULL-UP en PC2
+	CBI DDRC, PC2; Habilitando PC2 como entrada
+	SBI PORTC, PC3; Habilitando PULL-UP en PC3
+	CBI DDRC, PC3; Habilitando PC3 como entrada
+	SBI PORTC, PC4; Habilitando PULL-UP en PC4
+	CBI DDRC, PC4; Habilitando PC4 como entrada
+	SBI PORTC, PC5; Habilitando PULL-UP en PC5
+	CBI DDRC, PC5; Habilitando PC5 como entrada
+
+	//DISPLAY
+	SBI DDRD, PD0; Hablitando PD0 como salida
+	CBI PORTD, PD0; Apagar el bit PD0 
+	SBI DDRD, PD1; Hablitando PD1 como salida
+	CBI PORTD, PD1; Apagar el bit PD1 
+	SBI DDRD, PD2; Hablitando PD2 como salida
+	CBI PORTD, PD2; Apagar el bit PD2 
+	SBI DDRD, PD3; Hablitando PD3 como salida
+	CBI PORTD, PD3; Apagar el bit PD3 
+	SBI DDRD, PD4; Hablitando PD4 como salida
+	CBI PORTD, PD4; Apagar el bit PD4 
+	SBI DDRD, PD5; Hablitando PD5 como salida
+	CBI PORTD, PD5; Apagar el bit PD5 
+	SBI DDRD, PD6; Hablitando PD6 como salida
+	CBI PORTD, PD6; Apagar el bit PD6 
+
+	//LEDs INTERMEDIOS
+	SBI DDRD, PD7; Hablitando PD7 como salida
+	CBI PORTD, PD7; Apagar el bit PD7 
+
+	//LED MODO
+	;RED
+	SBI DDRC, PC0; Hablitando PC0 como salida
+	CBI PORTC, PC0; Apagar el bit PC0 
+	;GREEN
+	SBI DDRB, PB5; Hablitando PB5 como salida
+	CBI PORTB, PB5; Apagar el bit PB5 
+
+	//BUZZER
+	SBI DDRD, PB4; Hablitando PB4 como salida
+	CBI PORTD, PB4; Apagar el bit PB4 
+
+	//TRANSISTORES
+	SBI DDRD, PB0; Hablitando PB0 como salida
+	CBI PORTD, PB0; Apagar el bit PB0 
+	SBI DDRD, PB1; Hablitando PB1 como salida
+	CBI PORTD, PB1; Apagar el bit PB1 
+	SBI DDRD, PB2; Hablitando PB2 como salida
+	CBI PORTD, PB2; Apagar el bit PB2 
+	SBI DDRD, PB3; Hablitando PB3 como salida
+	CBI PORTD, PB3; Apagar el bit PB3 
+
+	CLR T1	  // Limpiar registros de tiempo
+	CLR T2
+	CLR T3
+	CLR T4
+	CLR T5
+	CLR T6
+	CLR	V4
+	
+
+	CALL Init_T0
+	SEI
+
+// Estado inicial
+S0:
+	//Botones
+	SBIS PINC, PC1// SALTA SI PC5 ES 1
+	RJMP RETROpc1_S0// CAMBIO DE MODO
+
+	//LED modo
+	LDI R16, 0b0000_0001
+	OUT PORTC, R16
+	LDI R16, 0b0000_0000
+	OUT PORTB, R16
+
+	// Displays
+	MOV HM_master,T1
+
+	MOV HM_master,T2
+
+	MOV HM_master,T3
+
+	LDI R16, 0b0000_0001
+	OUT PORTB, R16
+	LDI ZH, HIGH(TABLA7U <<1); BIT MAS SIGNIFICATIVO
+	LDI ZL, LOW(TABLA7U<<1); BIT MENOS SIGNIFICATIVO
+	ADD ZL, HM_master
+	LPM MU, Z
+	OUT PORTD, MU// Mostrar en display
+	
+
+	CLR R16	// Wait-Esperar que se muestre valor mini-loop
+	WAIT3:
+		 INC R16
+		 CPI R16,255
+		 BRNE WAIT3
+
+	MOV HM_master,T4
+
+	LDI R16, 0b0000_0010
+	OUT PORTB, R16
+	LDI ZH, HIGH(TABLA7D <<1); BIT MAS SIGNIFICATIVO
+	LDI ZL, LOW(TABLA7D<<1); BIT MENOS SIGNIFICATIVO
+	ADD ZL, HM_master
+	LPM MD, Z
+	OUT PORTD, MD// Mostrar en display
+
+
+	CLR R16	 // Wait-Esperar que se muestre valor mini-loop
+	WAIT4:
+		 INC R16
+		 CPI R16,255
+		 BRNE WAIT4
+
+	MOV HM_master,T5
+
+	LDI R16, 0b0000_0100
+	OUT PORTB, R16
+	LDI ZH, HIGH(TABLA7Uh <<1); BIT MAS SIGNIFICATIVO
+	LDI ZL, LOW(TABLA7Uh<<1); BIT MENOS SIGNIFICATIVO
+	ADD ZL, HM_master
+	LPM HU, Z
+	OUT PORTD, HU// Mostrar en display
+	
+
+	CLR R16	// Wait-Esperar que se muestre valor mini-loop
+	WAIT5:
+		 INC R16
+		 CPI R16,255
+		 BRNE WAIT5
+
+	MOV HM_master,T6
+
+	LDI R16, 0b0000_1000
+	OUT PORTB, R16
+	LDI ZH, HIGH(TABLA7Dh <<1); BIT MAS SIGNIFICATIVO
+	LDI ZL, LOW(TABLA7Dh<<1); BIT MENOS SIGNIFICATIVO
+	ADD ZL, HM_master
+	LPM HD, Z
+	OUT PORTD, HD// Mostrar en display
+
+
+	CLR R16	 // Wait-Esperar que se muestre valor mini-loop
+	WAIT6:
+		 INC R16
+		 CPI R16,255
+		 BRNE WAIT6
+	////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////
+
+	CPI R26, 1 // Conteo LOOP DE 1s 
+	BRNE S0
+	CLR R26
+
+	INC T1; Valor a mostrar INCREMENTA
+
+	MOV HM_master,T1
+	CPI HM_master, 10
+	BRCC over_nine_su
+
+	MOV HM_master,T2
+	CPI HM_master, 6
+	BRCC over_nine_sd
+
+	MOV HM_master,T3
+	CPI HM_master, 10
+	BRCC over_nine_mu
+
+	MOV HM_master,T4
+	CPI HM_master, 6
+	BRCC over_nine_md
+
+	MOV HM_master,T5
+	CPI HM_master, 10
+	BRCC over_nine_hu
+
+	MOV HM_master,T6
+	CPI HM_master, 3
+	BRCC over_nine_hd
+
+	MOV HM_master,V4
+	CPI HM_master, 24
+	BRCC over_nine_hd
+
+	RJMP S0
+
+over_nine_su:  //Modulo de suma de decada seg y reseteo de unidad seg
+	CLR T1
+	
+	INC T2
+	RJMP S0
+
+over_nine_sd:  //Modulo de suma de unidad min y reseteo de decada seg
+	CLR T2
+	
+	INC T3
+	RJMP S0
+
+over_nine_mu:	//Modulo de suma de decada min y reseteo de unidad min
+	CLR T3
+	CLR MU
+	INC T4
+	RJMP S0
+
+over_nine_md:  //Modulo de suma de unidad h y reseteo de decada min
+	CLR T4
+	CLR MD
+	INC T5
+	INC V4
+	RJMP S0
+
+over_nine_hu:  //Modulo de suma de decada h y reseteo de unidad h
+	CLR T5
+	CLR HU 
+	INC	T6
+	RJMP S0
+
+over_nine_hd:  //Modulo de suma de decada h y reseteo de unidad h
+	CLR T5
+	CLR T6
+	CLR V4
+	CLR HD
+	RJMP S0
+
+/////////////////////////////////////////////////////////////////////////
+// Estado de C.T.
+S1:
+
+////////////////////////////////////////////////////////////////////////
+// Estado de Fecha
+S2:
+
+////////////////////////////////////////////////////////////////////////
+// Estado de C.F.
+S3:	
+
+////////////////////////////////////////////////////////////////////////
+// Alarma
+S4:
+
+
+////////////////////////////////////////////////////////////////////
+// Apartado de TIEMR0
+////////////////////////////////////////////////////////////////////
+Init_T0:
+	LDI R16, (1<< CS02)|(1<<CS00)  ; Configurar el prescaler a 1024 
+	;para un reloj de 16MHz
+	OUT TCCR0B, R16
+
+	LDI R16, 100			;Cargar el valor de desbordamiento
+	OUT TCNT0, R16		;Cargar el valor inicial del contador
+
+	LDI R16, (1<<TOIE0); Habilitar interrupcion por overflow
+	STS TIMSK0, R16
+	RET
+
+ISR_TIMER0_OVF:
+	PUSH R16
+	IN R16, SREG
+	PUSH R16
+
+	LDI R16, 100	;Cargar el valor de desbordamiento
+	OUT TCNT0, R16	;Cargar el valor inicial del Contador
+	SBI TIFR0,TOV0	;Borramos la bandera de TOV0
+	INC R26			;Incrementamos contador de 10ms
+
+
+	POP R16
+	OUT SREG, R16
+	POP R16
+	RETI	
